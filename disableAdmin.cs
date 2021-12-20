@@ -1,10 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.Azure.WebJobs.Host;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
@@ -14,10 +11,8 @@ namespace appsvc_fnc_disableadmin_dotnet001
     public static class disableAdmin
     {
         [FunctionName("disableAdmin")]
-        // public static async Task<IActionResult> Run([TimerTrigger("0 30 9 * * Sun")]TimerInfo myTimer, ILogger log)
-        public static async Task<IActionResult> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
-            ILogger log)
+        //Run every sunday at 9h30
+        public static async Task Run([TimerTrigger("0 30 9 * * Sun")]TimerInfo myTimer, ILogger log)
         {
             log.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
             IConfiguration config = new ConfigurationBuilder()
@@ -26,19 +21,15 @@ namespace appsvc_fnc_disableadmin_dotnet001
            .Build();
 
             var adminGroup = config["adminGroup"];
+            var requesterEmail = config["requesterEmail"];
+            var emailSender = config["emailSender"];
 
             Auth auth = new Auth();
             var graphAPIAuth = auth.graphAuth(log);
-            var result = await CallMSFunction(graphAPIAuth, adminGroup, log);
-
-            string responseMessage = result
-               ? "Work as it should"
-               : $"Something went wrong. Check the logs";
-
-            return new OkObjectResult(responseMessage);
+            await DisableAdmin(graphAPIAuth, adminGroup, requesterEmail, emailSender, log);
         }
 
-        public static async Task<bool> CallMSFunction(Microsoft.Graph.GraphServiceClient graphAPIAuth, string adminGroup, ILogger log)
+        public static async Task<bool> DisableAdmin(GraphServiceClient graphAPIAuth, string adminGroup, string requesterEmail, string emailSender, ILogger log)
         {
             try
             {
@@ -60,14 +51,14 @@ namespace appsvc_fnc_disableadmin_dotnet001
                         var signInCount = signIn.Count;
                         log.LogInformation($"signIn number {signInCount}");
 
-                        //If the count of signIn is 0, this mean the user never signIn in the last 30days
+                        //If the count of signIn is 0, this mean the user never signIn
                         if (signInCount >= 1)
                         {
                             foreach (var userLogs in signIn)
                             {
-                                //Check if the user signIn in the last 30 days. 
+                                //Check if the user signIn in the last 28 days. 
                                 //If yes, stop this foreach and check the next member
-                                DateTime expiryDate = DateTime.Now - TimeSpan.FromDays(30);
+                                DateTime expiryDate = DateTime.Now - TimeSpan.FromDays(28);
                                 if (userLogs.CreatedDateTime > expiryDate)
                                 {
                                     log.LogInformation($" user {userLogs.UserDisplayName} - {userLogs.CreatedDateTime} - {expiryDate}");
@@ -75,8 +66,43 @@ namespace appsvc_fnc_disableadmin_dotnet001
                                 }
                                 else
                                 {
-                                    //User did not signIn in the last 30 days
-                                    log.LogInformation($"{admin.Id}");
+                                    //User did not signIn in the last 28 days
+                                    // Disable the acount
+                                    log.LogInformation($"Disable user {admin.Id}");
+                                    var user = new User
+                                    {
+                                        AccountEnabled = false
+                                    };
+                                   
+                                    await graphAPIAuth.Users[admin.Id]
+                                        .Request()
+                                        .UpdateAsync(user);
+
+                                    var MessageDisableAdmin = new Message
+                                    {
+                                        Subject = "Admin account is disable",
+                                        Body = new ItemBody
+                                        {
+                                            ContentType = BodyType.Html,
+                                            Content = $"Hi,<br><br>The admin account with id <strong>{admin.Id}</strong> got disable because the user did not login in the last 28 days.<br><br>Thank you"
+                                        },
+                                        ToRecipients = new List<Recipient>()
+                                        {
+                                            new Recipient
+                                            {
+                                                EmailAddress = new EmailAddress
+                                                {
+                                                    Address = $"{requesterEmail}"
+                                                }
+                                            }
+                                        },
+                                    };
+                                    await graphAPIAuth.Users[emailSender]
+                                        .SendMail(MessageDisableAdmin)
+                                        .Request()
+                                        .PostAsync();
+
+                                    log.LogInformation($"Send email to {requesterEmail} successfully.");
                                 }
                             }
                         }
@@ -88,16 +114,14 @@ namespace appsvc_fnc_disableadmin_dotnet001
                     }
                     catch (Exception ex)
                     {
-                        log.LogInformation($"no logs or error - {admin.Id} - {ex}");
+                        log.LogInformation($"Error - {admin.Id} - {ex}");
                     }
                 } 
             }
             catch (Exception ex)
             {
-                log.LogInformation($"{ex}");
+                log.LogInformation($"Error - {ex}");
             }
-
-        
             return true;
         }
     }
