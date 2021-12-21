@@ -23,6 +23,7 @@ namespace appsvc_fnc_disableadmin_dotnet001
             var adminGroup = config["adminGroup"];
             var requesterEmail = config["requesterEmail"];
             var emailSender = config["emailSender"];
+            var exceptionUser = config["exceptionUser"];
 
             Auth auth = new Auth();
             var graphAPIAuth = auth.graphAuth(log);
@@ -41,6 +42,9 @@ namespace appsvc_fnc_disableadmin_dotnet001
                 foreach (DirectoryObject admin in AdminMembers)
                 {
                     //Filter the sign logs on each member
+                    //Skip if user id is part of exceptionUser array
+                    if (exceptionUser.Contains(admin.Id) == false)
+                    {
                         try
                         {
                             log.LogInformation($"Get signin of {admin.Id}");
@@ -73,7 +77,7 @@ namespace appsvc_fnc_disableadmin_dotnet001
                                         {
                                             AccountEnabled = false
                                         };
-
+                                   
                                         await graphAPIAuth.Users[admin.Id]
                                             .Request()
                                             .UpdateAsync(user);
@@ -87,15 +91,15 @@ namespace appsvc_fnc_disableadmin_dotnet001
                                                 Content = $"Hi,<br><br>The admin account with id <strong>{admin.Id}</strong> got disable because the user did not login in the last 28 days.<br><br>Thank you"
                                             },
                                             ToRecipients = new List<Recipient>()
-                                        {
-                                            new Recipient
                                             {
-                                                EmailAddress = new EmailAddress
+                                                new Recipient
                                                 {
-                                                    Address = $"{requesterEmail}"
+                                                    EmailAddress = new EmailAddress
+                                                    {
+                                                        Address = $"{requesterEmail}"
+                                                    }
                                                 }
-                                            }
-                                        },
+                                            },
                                         };
                                         await graphAPIAuth.Users[emailSender]
                                             .SendMail(MessageDisableAdmin)
@@ -116,8 +120,10 @@ namespace appsvc_fnc_disableadmin_dotnet001
                         {
                             log.LogInformation($"Error - {admin.Id} - {ex}");
                         }
+                    
                     }
                 } 
+            }
             catch (Exception ex)
             {
                 log.LogInformation($"Error - {ex}");
