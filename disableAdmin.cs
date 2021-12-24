@@ -76,7 +76,7 @@ namespace appsvc_fnc_disableadmin_dotnet001
                                             Body = new ItemBody
                                             {
                                                 ContentType = BodyType.Html,
-                                                Content = $"Hi,<br><br>The admin account with id <strong>{admin.Id}</strong> got disable because the user did not login in the last 28 days.<br><br>Thank you"
+                                                Content = $"Hi,<br><br>The admin account with id <strong>{admin.Id}</strong> did not login in the last 28 days.<br><br>Thank you"
                                             },
                                             ToRecipients = new List<Recipient>()
                                             {
