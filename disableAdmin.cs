@@ -70,18 +70,6 @@ namespace appsvc_fnc_disableadmin_dotnet001
                                     }
                                     else
                                     {
-                                        //User did not signIn in the last 28 days
-                                        // Disable the acount
-                                        log.LogInformation($"Disable user {admin.Id}");
-                                        var user = new User
-                                        {
-                                            AccountEnabled = false
-                                        };
-                                   
-                                        await graphAPIAuth.Users[admin.Id]
-                                            .Request()
-                                            .UpdateAsync(user);
-
                                         var MessageDisableAdmin = new Message
                                         {
                                             Subject = "Admin account is disable",
